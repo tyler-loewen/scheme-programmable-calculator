@@ -1,0 +1,26 @@
+<uc_letter> -> A | B | ... | Z
+<lc_letter> -> a | b | ... | z
+<letter> -> <uc_letter>
+	| <lc_letter>
+<digit> -> 0 | 1 | ... | 9
+<alphanum> -> <letter>
+	| <digit>
+<alphanums> -> <letter>
+	| <number>
+	| <letter> <alphanums>
+	| <number> <alphanums>
+<id> -> <letter>
+	| <letter> <alphanums>
+
+<expr> -> <expr> + <term>
+	| <expr> - <term>
+	| <term>
+<term> -> <term> * <factor>
+	| <term> / <factpr>
+	| <factor>
+<factor> -> <exp> ^ <factor>
+	| <exp>
+<exp> -> (<expr>)
+	| <id>
+
+<assign> -> <id> = <expr>
