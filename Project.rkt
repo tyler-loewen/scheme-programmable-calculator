@@ -74,6 +74,7 @@
      ((exp - exp) (- $1 $3))
      ((exp * exp) (* $1 $3))
      ((exp / exp) (/ $1 $3))
+     ((- exp) (prec NEG) (- $2))
      ((exp ^ exp) (expt $1 $3))
      ((exp == exp) (= $1 $3))
      ((exp <> exp) (not(eq? $1 $3)))
