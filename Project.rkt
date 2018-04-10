@@ -45,7 +45,10 @@
    (end EOF)
    (error
     (lambda (is-token token-name token-value)
-      (display "An error has occurred!")
+      (if is-token
+          (eprintf "Token '~a' has an error. It's value: ~a\n" token-name token-value) ;; Token error
+          (display "Unknown parser error.") ;; Not a token error
+      )
     )
    )
    (precs
