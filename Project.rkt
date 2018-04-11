@@ -37,10 +37,10 @@
           ;; that element from that list.
 
           ((pop!) (if (null? stk)
-                    (error "pop!: The stack is empty.")
-                    (let ((result (car stk)))
-                      (set! stk (cdr stk))
-                      result)))
+                      (error "pop!: The stack is empty.")
+                      (let ((result (car stk)))
+                        (set! stk (cdr stk))
+                        result)))
 
           ;; Comment out any of the following operations that are not
           ;; wanted in a particular application of stacks.
@@ -89,7 +89,7 @@
   (digit (:/ #\0 #\9))
   (num (:>= 1 digit))
   (line-comment (:: "//" (:* (:~ #\newline))))
-)
+  )
 
 (define uofl-lexer
   (lexer
@@ -119,8 +119,8 @@
    ((:+ letter) (token-NAME (string->symbol lexeme))) ;; variable/function
    ((:: (:+ digit) #\. (:* digit)) (token-CONST-FLOAT (string->number lexeme))) ;; float
    ((:+ digit) (token-CONST-INT (string->number lexeme))) ;; integer
+   )
   )
-)
 
 (define uofl-parser
   (parser
@@ -131,9 +131,9 @@
       (if is-token
           (eprintf "Token '~a' has an error. It's value: ~a\n" token-name token-value) ;; Token error
           (display "Unknown parser error.") ;; Not a token error
+          )
       )
     )
-   )
    (precs
     (left == >= <= <>)
     (right =)
@@ -142,7 +142,7 @@
     (left * /)
     (left NEG)
     (right ^)
-   )
+    )
    (tokens value-tokens op-tokens delim-tokens control-tokens call-tokens type-tokens)
    (grammar
     (s ((exp-list) (reverse $1)))
@@ -196,14 +196,14 @@
         ))
      ((DEFINE-VAR NAME DATA-TYPE)
       (lambda ()
-       (let ((type (execute $3)))
-         (cond
-           ((eq? type 'integer) (hash-set! vars (execute $2) 0))
-           ((eq? type 'float) (hash-set! vars (execute $2) 0.0))
-           ((eq? type 'boolean) (hash-set! vars (execute $2) #f))
-           )
-        )
-      ))
+        (let ((type (execute $3)))
+          (cond
+            ((eq? type 'integer) (hash-set! vars (execute $2) 0))
+            ((eq? type 'float) (hash-set! vars (execute $2) 0.0))
+            ((eq? type 'boolean) (hash-set! vars (execute $2) #f))
+            )
+          )
+        ))
      ((NEWLINE) #f)
      )
     
@@ -266,10 +266,10 @@
         (lex-all-recursive ip token-list)
         (lambda ()
           token-list
+          )
         )
     )
   )
-)
 
 (define (parse-list token-list)
   ;; (printf "Tokenized: ~a\n" token-list)
@@ -282,22 +282,22 @@
                          )
                        )))
     parse-object
+    )
   )
-)
 
 (define (execute parse-object)
   (if (procedure? parse-object)
       (execute (parse-object))
       parse-object
+      )
   )
-)
 
 (define (lex-parse-all ip)
   (let* ((token-list '())
-        (result (lex-all-recursive ip token-list)))
+         (result (lex-all-recursive ip token-list)))
     (execute (parse-list (result)))
+    )
   )
-)
 
 (define (interpret ip)
   (port-count-lines! ip)
@@ -306,8 +306,8 @@
         (display (car temp))
         null
         )
+    )
   )
-)
 
 (define (var-ref-error name)
   (lambda () (error "Variable not defined:" name))
