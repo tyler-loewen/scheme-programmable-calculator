@@ -1,0 +1,19 @@
+#definefunc compare m n
+  if (m > n) then
+    outputln m
+  else
+    outputln n
+  endif
+#definefunc
+
+#definefunc main
+  #definevari m integer
+  #definevari n integer
+  for I = 1 to 30 stepsize 2 do
+    for J = 1 to 80 stepsize 3 do
+      compare(I, J)
+    endfor
+  endfor
+#definefunc
+
+main()
