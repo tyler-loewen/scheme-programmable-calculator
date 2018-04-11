@@ -1,0 +1,17 @@
+#definefunc factorial x
+  #definevari temp integer
+  temp = x
+  x = 1
+  for I = 2 to temp stepsize 1 do
+    x = x * I
+  endfor
+#definefunc
+
+#definefunc main
+  #definevari x integer
+  input x
+  factorial(x)
+  outputln x
+#definefunc
+
+main()
