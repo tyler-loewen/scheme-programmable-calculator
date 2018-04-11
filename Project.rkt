@@ -2,7 +2,8 @@
 
 (require parser-tools/lex
          parser-tools/yacc
-         (prefix-in : parser-tools/lex-sre))
+         (prefix-in : parser-tools/lex-sre)
+         racket/format)
 
 ;; Reference: http://www.cs.rpi.edu/courses/fall00/ai/scheme/reference/scheme-workshop/stacks.html
 (define make-stack
@@ -190,8 +191,20 @@
         ))
      ((OUTPUT NAME)
       (lambda ()
-        (let ((val (hash-ref vars (execute $2) (var-ref-error (execute $2)))))
+        (let* ((name (execute $2))
+               (val (hash-ref vars name (var-ref-error name))))
           (display val)
+          )
+        ))
+     ((INPUT NAME)
+      (lambda ()
+        (let* ((name (execute $2))
+              (val (hash-ref vars (execute $2) (var-ref-error (execute $2)))))
+          (begin
+            (printf "Input a value for ~a: " name)
+            (let ((line (read-line)))
+              (interpret (open-input-string (string-append (~a name) "=" line)))
+              ))
           )
         ))
      ((DEFINE-VAR NAME DATA-TYPE)
