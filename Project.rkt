@@ -73,9 +73,9 @@
           (else (error "stack: unrecognized message")))))))
 
 (define-tokens value-tokens (CONST-INT CONST-FLOAT CONST-BOOL NAME))
-(define-empty-tokens control-tokens (IF THEN ELSE ELSEIF ENDIF))
+(define-empty-tokens control-tokens (IF THEN ELSE ELSEIF ENDIF FOR TO DO ENDFOR))
 (define-empty-tokens op-tokens (+ - / * ^ NEG = == >= <= <> > <))
-(define-empty-tokens delim-tokens (EOF HASH OP CP COMMENT NEWLINE COMMA))
+(define-empty-tokens delim-tokens (EOF HASH OP CP COMMENT NEWLINE COMMA STEPSIZE))
 (define-empty-tokens call-tokens (DEFINE-VAR DEFINE-FUNC EXIT CLEAR INPUT OUTPUT OUTPUT-LN))
 (define-tokens type-tokens (DATA-TYPE))
 
@@ -111,6 +111,11 @@
    ("elseif" 'ELSEIF)
    ("else" 'ELSE)
    ("endif" 'ENDIF)
+   ("for" 'FOR)
+   ("to" 'TO)
+   ("stepsize" 'STEPSIZE)
+   ("do" 'DO)
+   ("endfor" 'ENDFOR)
    ("#exit" 'EXIT)
    ("#clear" 'CLEAR)
    ("#definevari" 'DEFINE-VAR)
@@ -157,24 +162,7 @@
      ((CONST-FLOAT) (lambda () $1))
      ((CONST-BOOL) (lambda () $1))
      ((NAME) (lambda () (hash-ref vars (execute $1) (var-ref-error (execute $1)))))
-     ((NAME = exp) (lambda ()
-                     (let ((name (execute $1)))
-                       (if (hash-has-key? vars name)
-                           (let* ((val (execute $3))
-                                  (cur (hash-ref vars name)))
-                             ;; Make sure the types are equal first
-                             (if (types-equal? val cur)
-                                 (begin
-                                   (hash-set! vars name val)
-                                   val
-                                   )
-                                 (error "Type error for variable:" name)
-                                 )
-                             )
-                           (var-ref-error name)
-                           )
-                       )
-                     ))
+     ((assign-exp) (lambda () $1))
      ((NAME OP func-call-params CP)
       (lambda ()
         (let* ((name (execute $1))
@@ -237,19 +225,66 @@
         ))
      ((DEFINE-VAR NAME DATA-TYPE)
       (lambda ()
-        (let ((type (execute $3)))
-          (cond
-            ((eq? type 'integer) (hash-set! vars (execute $2) 0))
-            ((eq? type 'float) (hash-set! vars (execute $2) 0.0))
-            ((eq? type 'boolean) (hash-set! vars (execute $2) #f))
-            )
-          )
-        ))
+        (let ((name (execute $2)))
+          (if (and (not (equal? (~a name) "I")) (not (equal? (~a name) "J")))
+              (let ((type (execute $3)))
+                (cond
+                  ((eq? type 'integer) (hash-set! vars name 0))
+                  ((eq? type 'float) (hash-set! vars name 0.0))
+                  ((eq? type 'boolean) (hash-set! vars name #f))
+                  )
+                )
+              (error "Cannot defined variable whose name is reserved for loops:" name)
+              )
+          )))
      ((DEFINE-FUNC NAME func-formal-params NEWLINE func-body DEFINE-FUNC)
       (lambda ()
         (hash-set! funcs (execute $2) (make-func! (reverse $3) (reverse $5)))
         ))
+     ((FOR assign-loop-exp exp TO exp STEPSIZE exp DO for-body ENDFOR)
+      (lambda ()
+        (let ((val (execute $3)))
+          (begin
+            (execute-loop $2 val (execute $5) (execute $7) val (reverse $9))
+            )
+          )))
      ((NEWLINE) #f)
+     )
+
+    (assign-exp
+     ((NAME = exp) (lambda ()
+                     (let ((name (execute $1)))
+                       (if (hash-has-key? vars name)
+                           (let* ((val (execute $3))
+                                  (cur (hash-ref vars name)))
+                             ;; Make sure the types are equal first
+                             (if (types-equal? val cur)
+                                 (begin
+                                   (hash-set! vars name val)
+                                   val
+                                   )
+                                 (error "Type error for variable:" name)
+                                 )
+                             )
+                           (var-ref-error name)
+                           )
+                       )
+                     ))
+     )
+
+    (assign-loop-exp
+     ((NAME =) (lambda ()
+                 (let ((name (execute $1)))
+                   (if (or (equal? (~a name) "I") (equal? (~a name) "J"))
+                       (let* ((val (execute (run-stack 'pop!))))
+                         (begin
+                           (hash-set! vars name val)
+                           val
+                           )
+                         )
+                       (error "Loop variables must be named either I or J:" name)
+                       )
+                   )))
      )
 
     (stack-push-exp
@@ -318,6 +353,11 @@
         )
       )
      )
+
+    (for-body
+     (() null)
+     ((for-body exp) (cons $2 $1))
+     )
     
     (cond-exp-body
      ((exp-list2 ELSEIF cond-exp)
@@ -381,6 +421,22 @@
                          )
                        )))
     parse-object
+    )
+  )
+
+(define (execute-loop assign-loop-exp val-from val-to stepsize val-cur loop-body)
+  (let* ((val-next (+ val-cur stepsize))
+         (min-bound (min val-from val-to))
+         (max-bound (max val-from val-to)))
+    (if (and (>= val-cur min-bound) (<= val-cur max-bound))
+        (begin
+          (run-stack 'push! val-cur)
+          (execute assign-loop-exp)
+          (execute loop-body)
+          (execute-loop assign-loop-exp val-from val-to stepsize val-next loop-body)
+          )
+        #f
+        )
     )
   )
 
