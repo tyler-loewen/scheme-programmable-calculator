@@ -71,10 +71,12 @@
 
           (else (error "stack: unrecognized message")))))))
 
-(define-tokens value-tokens (CONST-INT CONST-FLOAT CONST-BOOL NAME SYS-CALL))
+(define-tokens value-tokens (CONST-INT CONST-FLOAT CONST-BOOL NAME))
 (define-empty-tokens control-tokens (IF THEN ELSE ELSEIF ENDIF))
 (define-empty-tokens op-tokens (+ - / * ^ NEG = == >= <= <> > <))
 (define-empty-tokens delim-tokens (EOF HASH OP CP WHITESPACE COMMENT))
+(define-empty-tokens call-tokens (DEFINE-VAR DEFINE-FUNC EXIT CLEAR INPUT OUTPUT))
+(define-tokens type-tokens (DATA-TYPE))
 
 (define vars (make-hash))
 (define funcs (make-hash))
@@ -104,7 +106,14 @@
    ("elseif" 'ELSEIF)
    ("else" 'ELSE)
    ("endif" 'ENDIF)
-   ((:: #\# (:+ letter)) (token-SYS-CALL (string->symbol lexeme))) ;; system call
+   ("#exit" 'EXIT)
+   ("#clear" 'CLEAR)
+   ("#definevari" 'DEFINE-VAR)
+   ("#definefunc" 'DEFINE-FUNC)
+   ("#" 'HASH)
+   ("input" 'INPUT)
+   ("output" 'OUTPUT)
+   ((:or "integer" "boolean" "float") (token-DATA-TYPE (string->symbol lexeme)))
    ((:+ letter) (token-NAME (string->symbol lexeme))) ;; variable/function
    ((:: (:+ digit) #\. (:* digit)) (token-CONST-FLOAT (string->number lexeme))) ;; float
    ((:+ digit) (token-CONST-INT (string->number lexeme))) ;; integer
@@ -133,7 +142,7 @@
     (left NEG)
     (right ^)
    )
-   (tokens value-tokens op-tokens delim-tokens control-tokens)
+   (tokens value-tokens op-tokens delim-tokens control-tokens call-tokens type-tokens)
    (grammar
     (s (() #f)
        ((exp) $1))
@@ -141,11 +150,25 @@
      ((CONST-INT) (lambda () $1))
      ((CONST-FLOAT) (lambda () $1))
      ((CONST-BOOL) (lambda () $1))
-     ((NAME) (lambda () (hash-ref vars (execute $1) #f)))
+     ((NAME) (lambda () (hash-ref vars (execute $1) (var-ref-error (execute $1)))))
      ((NAME = exp) (lambda ()
-                     (hash-set! vars (execute $1) (execute $3))
-                     $3
-                   ))
+                     (let ((name (execute $1)))
+                       (if (hash-has-key? vars name)
+                           (let* ((val (execute $3))
+                                  (cur (hash-ref vars name)))
+                             ;; Make sure the types are equal first
+                             (if (types-equal? val cur)
+                                 (begin
+                                   (hash-set! vars name val)
+                                   val
+                                   )
+                                 (error "Type error for variable:" name)
+                                 )
+                             )
+                           (var-ref-error name)
+                           )
+                       )
+                     ))
      ((exp + exp) (lambda () (+ (execute $1) (execute $3))))
      ((exp - exp) (lambda () (- (execute $1) (execute $3))))
      ((exp * exp) (lambda () (* (execute $1) (execute $3))))
@@ -154,15 +177,32 @@
      ((exp ^ exp) (lambda () (expt (execute $1) (execute $3))))
      ((logical-op-exp) (lambda () $1))
      ((OP exp CP) (lambda () $2))
-     ((SYS-CALL)
+     ((EXIT) (lambda () (exit)))
+     ((CLEAR)
       (lambda ()
-        ;; Handle the system call
-        (display $1)
+        (hash-clear! vars)
+        (hash-clear! funcs)
         ))
      ((IF cond-exp ENDIF)
       (lambda ()
         $2
         ))
+     ((OUTPUT NAME)
+      (lambda ()
+        (let ((val (hash-ref vars (execute $2) (var-ref-error (execute $2)))))
+          (display val)
+          )
+        ))
+     ((DEFINE-VAR NAME DATA-TYPE)
+      (lambda ()
+       (let ((type (execute $3)))
+         (cond
+           ((eq? type 'integer) (hash-set! vars (execute $2) 0))
+           ((eq? type 'float) (hash-set! vars (execute $2) 0.0))
+           ((eq? type 'boolean) (hash-set! vars (execute $2) #f))
+           )
+        )
+      ))
      )
     (logical-op-exp
      ((exp == exp) (lambda () (eq? (execute $1) (execute $3))))
@@ -222,7 +262,7 @@
 )
 
 (define (parse-list token-list)
-  (printf "Tokenized: ~a\n" token-list)
+  ;; (printf "Tokenized: ~a\n" token-list)
   (let ((parse-object (uofl-parser
                        (lambda ()
                          (let ((tok (car token-list)))
@@ -252,11 +292,30 @@
 (define (interpret ip)
   (port-count-lines! ip)
   (let ((temp (lex-parse-all ip)))
-    (printf "Result: ~a\n" temp)
+    (display "") ;; Don't do anything. The parser will handle everything.
   )
 )
 
-(interpret (open-input-string "#print"))
+(define (var-ref-error name)
+  (lambda () (error "Variable not defined:" name))
+  )
+
+(define (func-ref-error name)
+  (lambda () (error "Function not defined:" name))
+  )
+
+(define (types-equal? x y)
+  (cond
+    ((exact-integer? x) (exact-integer? y)) ;; Integers
+    ((inexact? x) (inexact? y)) ;; Floats
+    ((boolean? x) (boolean? y))
+    (else #f)
+    )
+  )
+
+(interpret (open-input-string "#definevari x integer"))
+(interpret (open-input-string "x=1.0"))
+(interpret (open-input-string "output x"))
 
 ;;(interpret (open-input-string "x=0"))
 ;;(interpret (open-input-string "y=0"))
