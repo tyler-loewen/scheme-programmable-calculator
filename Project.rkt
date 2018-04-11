@@ -72,10 +72,10 @@
 
           (else (error "stack: unrecognized message")))))))
 
-(define-tokens value-tokens (CONST-INT CONST-FLOAT CONST-BOOL NAME))
+(define-tokens value-tokens (CONST-INT CONST-FLOAT CONST-BOOL NAME STRING))
 (define-empty-tokens control-tokens (IF THEN ELSE ELSEIF ENDIF FOR TO DO ENDFOR))
 (define-empty-tokens op-tokens (+ - / * ^ NEG = == >= <= <> > <))
-(define-empty-tokens delim-tokens (EOF HASH OP CP COMMENT NEWLINE COMMA STEPSIZE))
+(define-empty-tokens delim-tokens (EOF HASH OP CP COMMENT NEWLINE COMMA STEPSIZE QUOTE))
 (define-empty-tokens call-tokens (DEFINE-VAR DEFINE-FUNC EXIT CLEAR INPUT OUTPUT OUTPUT-LN))
 (define-tokens type-tokens (DATA-TYPE))
 
@@ -102,6 +102,7 @@
    ((:or "+" "-" "/" "*" "^" "=" ">" "<") (string->symbol lexeme))
    (#\( 'OP)
    (#\) 'CP)
+   [#\" (token-STRING (list->string (string-lexer input-port)))]
    (line-comment 'COMMENT) ;; comment
    ((:or #\tab #\space #\newline) (uofl-lexer input-port)) ;; ignore whitespace
    ("true" (token-CONST-BOOL #t)) ;; true
@@ -129,6 +130,16 @@
    ((:+ letter) (token-NAME (string->symbol lexeme))) ;; variable/function
    ((:: (:+ digit) #\. (:* digit)) (token-CONST-FLOAT (string->number lexeme))) ;; float
    ((:+ digit) (token-CONST-INT (string->number lexeme))) ;; integer
+   )
+  )
+
+(define string-lexer
+  (lexer
+   ((:~ #\" #\\) (cons (car (string->list lexeme))
+                       (string-lexer input-port)))
+   ((:: #\\ #\\) (cons #\\ (string-lexer input-port)))
+   ((:: #\\ #\") (cons #\" (string-lexer input-port)))
+   (#\" null)
    )
   )
 
@@ -205,6 +216,10 @@
           (display val)
           )
         ))
+     ((OUTPUT STRING)
+      (lambda ()
+        (printf "~a" (execute $2))
+        ))
      ((OUTPUT-LN NAME)
       (lambda ()
         (let* ((name (execute $2))
@@ -212,10 +227,14 @@
           (printf "~a\n" val)
           )
         ))
+     ((OUTPUT-LN STRING)
+      (lambda ()
+        (printf "~a\n" (execute $2))
+        ))
      ((INPUT NAME)
       (lambda ()
         (let* ((name (execute $2))
-              (val (hash-ref vars (execute $2) (var-ref-error (execute $2)))))
+               (val (hash-ref vars (execute $2) (var-ref-error (execute $2)))))
           (begin
             (printf "Input a value for ~a: " name)
             (let ((line (read-line)))
