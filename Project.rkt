@@ -74,7 +74,7 @@
 (define-tokens value-tokens (CONST-INT CONST-FLOAT CONST-BOOL NAME))
 (define-empty-tokens control-tokens (IF THEN ELSE ELSEIF ENDIF))
 (define-empty-tokens op-tokens (+ - / * ^ NEG = == >= <= <> > <))
-(define-empty-tokens delim-tokens (EOF HASH OP CP WHITESPACE COMMENT))
+(define-empty-tokens delim-tokens (EOF HASH OP CP COMMENT NEWLINE))
 (define-empty-tokens call-tokens (DEFINE-VAR DEFINE-FUNC EXIT CLEAR INPUT OUTPUT))
 (define-tokens type-tokens (DATA-TYPE))
 
@@ -93,12 +93,14 @@
 
 (define uofl-lexer
   (lexer
+   ((eof) 'EOF)
+   (#\newline 'NEWLINE)
    ((:or "==" ">=" "<=" "<>") (string->symbol lexeme))
    ((:or "+" "-" "/" "*" "^" "=" ">" "<") (string->symbol lexeme))
    (#\( 'OP)
    (#\) 'CP)
-   ((:or #\tab #\space #\newline) (uofl-lexer input-port)) ;; ignore whitespace
    (line-comment 'COMMENT) ;; comment
+   ((:or #\tab #\space #\newline) (uofl-lexer input-port)) ;; ignore whitespace
    ("true" (token-CONST-BOOL #t)) ;; true
    ("false" (token-CONST-BOOL #f)) ;; false
    ("if" 'IF)
@@ -117,7 +119,6 @@
    ((:+ letter) (token-NAME (string->symbol lexeme))) ;; variable/function
    ((:: (:+ digit) #\. (:* digit)) (token-CONST-FLOAT (string->number lexeme))) ;; float
    ((:+ digit) (token-CONST-INT (string->number lexeme))) ;; integer
-   ((eof) 'EOF)
   )
 )
 
@@ -144,8 +145,8 @@
    )
    (tokens value-tokens op-tokens delim-tokens control-tokens call-tokens type-tokens)
    (grammar
-    (s (() #f)
-       ((exp) $1))
+    (s ((exp-list) (reverse $1)))
+    
     (exp
      ((CONST-INT) (lambda () $1))
      ((CONST-FLOAT) (lambda () $1))
@@ -203,7 +204,9 @@
            )
         )
       ))
+     ((NEWLINE) #f)
      )
+    
     (logical-op-exp
      ((exp == exp) (lambda () (eq? (execute $1) (execute $3))))
      ((exp <> exp) (lambda () (not(eq? (execute $1) (execute $3)))))
@@ -212,6 +215,7 @@
      ((exp > exp) (lambda () (> (execute $1) (execute $3))))
      ((exp < exp) (lambda () (< (execute $1) (execute $3))))
      )
+    
     (cond-exp
      ((exp THEN cond-exp-body)
       (lambda ()
@@ -220,6 +224,7 @@
         )
       )
      )
+    
     (cond-exp-body
      ((exp ELSEIF cond-exp)
       (lambda ()
@@ -244,6 +249,11 @@
             #f
             )
         ))
+     )
+
+    (exp-list
+     (() null)
+     ((exp-list exp) (cons (execute $2) $1))
      )
     )
    )
@@ -292,7 +302,10 @@
 (define (interpret ip)
   (port-count-lines! ip)
   (let ((temp (lex-parse-all ip)))
-    (display "") ;; Don't do anything. The parser will handle everything.
+    (if (and (pair? temp) (number? (car temp)))
+        (display (car temp))
+        null
+        )
   )
 )
 
@@ -313,11 +326,23 @@
     )
   )
 
-(interpret (open-input-string "#definevari x integer"))
-(interpret (open-input-string "x=1.0"))
-(interpret (open-input-string "output x"))
+(define (read-fully ip str)
+  (let ((str2 (read-line ip)))
+    (if (and (= (string-length str2) 0) (not (char-ready? ip)))
+        (string-append str str2)
+        (if (= (string-length str) 0)
+            (read-fully ip str2)
+            (read-fully ip (string-append str (string-append "\n" str2)))
+            )
+        )
+    )
+  )
 
-;;(interpret (open-input-string "x=0"))
-;;(interpret (open-input-string "y=0"))
-;;(interpret (open-input-string "if (x == 0) then y=1 endif"))
-;;(interpret (open-input-string "y"))
+(define (uofl)
+  (display "\nUofL>")
+  (interpret (open-input-string (read-fully (current-input-port) "")))
+  (uofl)
+  )
+
+(display "Starting interpreter.")
+(uofl)
