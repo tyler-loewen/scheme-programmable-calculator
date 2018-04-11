@@ -217,7 +217,13 @@
             )
           )
         ))
+     ;;((DEFINE-FUNC NAME func-params DEFINE-FUNC) (display $2))
      ((NEWLINE) #f)
+     )
+
+    (func-params
+     ((NAME func-params) (cons $1 $2))
+     (() null)
      )
     
     (logical-op-exp
@@ -233,32 +239,32 @@
      ((exp THEN cond-exp-body)
       (lambda ()
         (run-stack 'push! (execute $1))
-        $3
+        (lambda () $3)
         )
       )
      )
     
     (cond-exp-body
-     ((exp ELSEIF cond-exp)
+     ((exp-list2 ELSEIF cond-exp)
       (lambda ()
         (if (run-stack 'pop!)
-            $1
-            $3
+            (lambda () (reverse $1))
+            (lambda () $3)
             )
         )
       )
-     ((exp ELSE exp)
+     ((exp-list2 ELSE exp-list2)
       (lambda ()
         (if (run-stack 'pop!)
-            $1
-            $3
+            (lambda () (reverse $1))
+            (lambda () (reverse $3))
             )
         )
       )
-     ((exp)
+     ((exp-list2)
       (lambda ()
         (if (run-stack 'pop!)
-            $1
+            (lambda () (reverse $1))
             #f
             )
         ))
@@ -266,7 +272,12 @@
 
     (exp-list
      (() null)
-     ((exp-list exp) (cons (execute $2) $1))
+     ((exp-list exp) (cons $2 $1))
+     )
+
+    (exp-list2
+     (() null)
+     ((exp-list2 exp) (cons $2 $1))
      )
     )
    )
@@ -301,7 +312,13 @@
 (define (execute parse-object)
   (if (procedure? parse-object)
       (execute (parse-object))
-      parse-object
+      (if (pair? parse-object)
+          (begin
+            (execute (car parse-object))
+            (execute (cdr parse-object))
+            )
+          parse-object
+          )
       )
   )
 
@@ -316,7 +333,7 @@
   (port-count-lines! ip)
   (let ((temp (lex-parse-all ip)))
     (if (and (pair? temp) (number? (car temp)))
-        (display (car temp))
+        null;;(display (car temp))
         null
         )
     )
