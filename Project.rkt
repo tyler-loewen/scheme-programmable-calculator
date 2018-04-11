@@ -75,13 +75,15 @@
 (define-tokens value-tokens (CONST-INT CONST-FLOAT CONST-BOOL NAME))
 (define-empty-tokens control-tokens (IF THEN ELSE ELSEIF ENDIF))
 (define-empty-tokens op-tokens (+ - / * ^ NEG = == >= <= <> > <))
-(define-empty-tokens delim-tokens (EOF HASH OP CP COMMENT NEWLINE))
-(define-empty-tokens call-tokens (DEFINE-VAR DEFINE-FUNC EXIT CLEAR INPUT OUTPUT))
+(define-empty-tokens delim-tokens (EOF HASH OP CP COMMENT NEWLINE COMMA))
+(define-empty-tokens call-tokens (DEFINE-VAR DEFINE-FUNC EXIT CLEAR INPUT OUTPUT OUTPUT-LN))
 (define-tokens type-tokens (DATA-TYPE))
 
 (define vars (make-hash))
 (define funcs (make-hash))
 (define run-stack (make-stack))
+
+(struct func (params body) #:constructor-name make-func! #:transparent)
 
 (define-lex-abbrevs
   (lc-letter (:/ #\a #\z))
@@ -114,7 +116,9 @@
    ("#definevari" 'DEFINE-VAR)
    ("#definefunc" 'DEFINE-FUNC)
    ("#" 'HASH)
+   (#\, 'COMMA)
    ("input" 'INPUT)
+   ("outputln" 'OUTPUT-LN)
    ("output" 'OUTPUT)
    ((:or "integer" "boolean" "float") (token-DATA-TYPE (string->symbol lexeme)))
    ((:+ letter) (token-NAME (string->symbol lexeme))) ;; variable/function
@@ -171,6 +175,23 @@
                            )
                        )
                      ))
+     ((NAME OP func-call-params CP)
+      (lambda ()
+        (let* ((name (execute $1))
+              (fn (hash-ref funcs name (func-ref-error name))))
+          ;; Push the actual parameters to the stack
+          ;; Left-most on the bottom, right-most on the top
+          (execute (reverse $3))
+
+          ;; Pop the actual parameters from the stack and use those
+          ;; values to set variable values.
+          ;; Right-most from the top, left-most from the bottom
+          ;; The params are stored in order, so we reverse the order
+          (execute (reverse (func-params fn)))
+          
+          (execute (func-body fn))
+          )
+        ))
      ((exp + exp) (lambda () (+ (execute $1) (execute $3))))
      ((exp - exp) (lambda () (- (execute $1) (execute $3))))
      ((exp * exp) (lambda () (* (execute $1) (execute $3))))
@@ -196,6 +217,13 @@
           (display val)
           )
         ))
+     ((OUTPUT-LN NAME)
+      (lambda ()
+        (let* ((name (execute $2))
+               (val (hash-ref vars name (var-ref-error name))))
+          (printf "~a\n" val)
+          )
+        ))
      ((INPUT NAME)
       (lambda ()
         (let* ((name (execute $2))
@@ -217,13 +245,60 @@
             )
           )
         ))
-     ;;((DEFINE-FUNC NAME func-params DEFINE-FUNC) (display $2))
+     ((DEFINE-FUNC NAME func-formal-params NEWLINE func-body DEFINE-FUNC)
+      (lambda ()
+        (hash-set! funcs (execute $2) (make-func! (reverse $3) (reverse $5)))
+        ))
      ((NEWLINE) #f)
      )
 
-    (func-params
-     ((NAME func-params) (cons $1 $2))
+    (stack-push-exp
+     ((exp)
+      (lambda ()
+        (run-stack 'push! (execute $1))
+        ))
+     )
+
+    (stack-pop-name-exp
+     ((NAME)
+      (lambda ()
+        (let* ((val (execute (run-stack 'pop!)))
+               (name (execute $1)))
+          (if (hash-has-key? vars name)
+              (let ((cur (hash-ref vars name)))
+                ;; Make sure the types are equal first
+                (if (types-equal? val cur)
+                    (begin
+                      (hash-set! vars name val)
+                      val
+                      )
+                    (error "Type error for variable:" name)
+                    )
+                )
+              (var-ref-error name)
+              )         
+          )
+        ))
+     )
+
+    (func-call-params
      (() null)
+     ((func-call-params2 stack-push-exp) (cons $2 $1))
+     )
+
+    (func-call-params2
+     (() null)
+     ((func-call-params2 stack-push-exp COMMA) (cons $2 $1))
+     )
+
+    (func-formal-params
+     (() null)
+     ((func-formal-params stack-pop-name-exp) (cons $2 $1))
+     )
+
+    (func-body
+     (() null)
+     ((func-body exp) (cons $2 $1))
      )
     
     (logical-op-exp
@@ -350,7 +425,7 @@
 (define (types-equal? x y)
   (cond
     ((exact-integer? x) (exact-integer? y)) ;; Integers
-    ((inexact? x) (inexact? y)) ;; Floats
+    ((and (number? x) (inexact? x)) (inexact? y)) ;; Floats
     ((boolean? x) (boolean? y))
     (else #f)
     )
